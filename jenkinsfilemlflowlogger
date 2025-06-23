@@ -1,0 +1,91 @@
+pipeline {
+    agent any
+
+    environment {
+        VENV_PATH = "/var/jenkins_home/databricks-venv"
+        DATABRICKS_HOST = "https://adb-1623711253723407.7.azuredatabricks.net"
+    }
+
+    stages {
+        stage('Upload Script to DBFS') {
+            steps {
+                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
+                    sh '''
+                        echo "Uploading hello.py to DBFS..., if already there it'll execute"
+                        export DATABRICKS_HOST=$DATABRICKS_HOST
+                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
+                        databricks fs cp hello.py dbfs:/tmp/hello.py --overwrite
+                    '''
+                }
+            }
+        }
+
+        stage('Submit Databricks Job') {
+            steps {
+                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
+                    script {
+                        def runJson = sh (
+                            script: '''
+                                export DATABRICKS_HOST=$DATABRICKS_HOST
+                                export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
+                                databricks runs submit --json '{
+                                  "run_name": "Hello from Jenkins",
+                                  "existing_cluster_id": "0622-200801-1agiap0e",
+                                  "libraries": [{"pypi": {"package": "fire"}}],
+                                  "spark_python_task": {
+                                    "python_file": "dbfs:/tmp/hello.py",
+                                    "parameters": ["--name", "Lorcan"]
+                                  }
+                                }'
+                            ''',
+                            returnStdout: true
+                        ).trim()
+
+                        env.RUN_ID = sh(script: "echo '${runJson}' | jq -r '.run_id'", returnStdout: true).trim()
+                        echo "Submitted Databricks job with run_id: ${env.RUN_ID}"
+                    }
+                }
+            }
+        }
+
+        stage('Wait for Job Completion') {
+            steps {
+                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
+                    sh '''
+                        export DATABRICKS_HOST=$DATABRICKS_HOST
+                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
+                        echo "Polling job status for run_id: $RUN_ID"
+
+                        while true; do
+                          STATE=$(databricks runs get --run-id "$RUN_ID")
+                          LIFE_CYCLE_STATE=$(echo "$STATE" | jq -r '.state.life_cycle_state')
+                          RESULT_STATE=$(echo "$STATE" | jq -r '.state.result_state')
+
+                          echo "Current state: $LIFE_CYCLE_STATE"
+
+                          if [ "$LIFE_CYCLE_STATE" = "TERMINATED" ] || [ "$LIFE_CYCLE_STATE" = "SKIPPED" ] || [ "$LIFE_CYCLE_STATE" = "INTERNAL_ERROR" ]; then
+                            echo "Job finished with result: $RESULT_STATE"
+                            break
+                          fi
+
+                          sleep 10
+                        done
+                    '''
+                }
+            }
+        }
+
+        stage('Fetch Job Output') {
+            steps {
+                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
+                    sh '''
+                        export DATABRICKS_HOST=$DATABRICKS_HOST
+                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
+                        echo "Fetching job output for run_id: $RUN_ID"
+                        databricks runs get-output --run-id "$RUN_ID"
+                    '''
+                }
+            }
+        }
+    }
+}
