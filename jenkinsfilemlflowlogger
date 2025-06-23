@@ -36,7 +36,7 @@ pipeline {
                                   "libraries": [{"pypi": {"package": "pymssql"}}],
                                   "spark_python_task": {
                                     "python_file": "dbfs:/tmp/mlflow_logger.py",
-                                    "parameters": []
+                                    "parameters": ["--sql-password", "${SQL_PASSWORD}"]
                                   }
                                 }'
                             ''',
