@@ -11,7 +11,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
                     sh '''
-                        echo "Uploading hello.py to DBFS..."
+                        echo "Uploading hello.py to DBFS..., if already there it'll execute"
                         export DATABRICKS_HOST=$DATABRICKS_HOST
                         export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
                         databricks fs cp hello.py dbfs:/tmp/hello.py --overwrite
