@@ -26,7 +26,6 @@ pipeline {
                     script {
                         def runJson = sh (
                             script: '''
-                                . $VENV_PATH/bin/activate
                                 export DATABRICKS_HOST=$DATABRICKS_HOST
                                 export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
                                 databricks runs submit --json '{
@@ -53,7 +52,6 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
                     sh '''
-                        . $VENV_PATH/bin/activate
                         export DATABRICKS_HOST=$DATABRICKS_HOST
                         export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
                         echo "Polling job status for run_id: $RUN_ID"
@@ -81,7 +79,6 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
                     sh '''
-                        . $VENV_PATH/bin/activate
                         export DATABRICKS_HOST=$DATABRICKS_HOST
                         export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
                         echo "Fetching job output for run_id: $RUN_ID"
