@@ -10,7 +10,8 @@ pipeline {
     stages {
         stage('Checkout Repo') {
             steps {
-                git 'https://github.com/LorcanNeary/IAC_CICD'
+                git branch: 'main',
+                    url: 'https://github.com/LorcanNeary/IAC_CICD'
             }
         }
 
