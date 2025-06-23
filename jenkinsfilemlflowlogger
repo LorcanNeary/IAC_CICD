@@ -4,37 +4,38 @@ pipeline {
     environment {
         VENV_PATH = "/var/jenkins_home/databricks-venv"
         DATABRICKS_HOST = "https://adb-1623711253723407.7.azuredatabricks.net"
+        DATABRICKS_TOKEN = credentials('databricks-token')
     }
 
     stages {
+        stage('Checkout Repo') {
+            steps {
+                git 'https://github.com/LorcanNeary/IAC_CICD'
+            }
+        }
+
         stage('Upload Script to DBFS') {
             steps {
-                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
-                    sh '''
-                        echo "Uploading hello.py to DBFS..., if already there it'll execute"
-                        export DATABRICKS_HOST=$DATABRICKS_HOST
-                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
-                        databricks fs cp hello.py dbfs:/tmp/hello.py --overwrite
-                    '''
-                }
+                sh '''
+                    echo "Uploading mlflow_logger.py to DBFS..., if already there it'll execute"
+                    databricks fs cp mlflow_logger.py dbfs:/tmp/mlflow_logger.py --overwrite
+                '''
             }
         }
 
         stage('Submit Databricks Job') {
             steps {
-                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
+                withCredentials([string(credentialsId: 'sql-password', variable: 'SQL_PASSWORD')]) {
                     script {
                         def runJson = sh (
                             script: '''
-                                export DATABRICKS_HOST=$DATABRICKS_HOST
-                                export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
                                 databricks runs submit --json '{
-                                  "run_name": "Hello from Jenkins",
+                                  "run_name": "MLflow Logger from Jenkins",
                                   "existing_cluster_id": "0622-200801-1agiap0e",
-                                  "libraries": [{"pypi": {"package": "fire"}}],
+                                  "libraries": [{"pypi": {"package": "pymssql"}}],
                                   "spark_python_task": {
-                                    "python_file": "dbfs:/tmp/hello.py",
-                                    "parameters": ["--name", "Lorcan"]
+                                    "python_file": "dbfs:/tmp/mlflow_logger.py",
+                                    "parameters": []
                                   }
                                 }'
                             ''',
@@ -50,41 +51,33 @@ pipeline {
 
         stage('Wait for Job Completion') {
             steps {
-                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
-                    sh '''
-                        export DATABRICKS_HOST=$DATABRICKS_HOST
-                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
-                        echo "Polling job status for run_id: $RUN_ID"
+                sh '''
+                    echo "Polling job status for run_id: $RUN_ID"
 
-                        while true; do
-                          STATE=$(databricks runs get --run-id "$RUN_ID")
-                          LIFE_CYCLE_STATE=$(echo "$STATE" | jq -r '.state.life_cycle_state')
-                          RESULT_STATE=$(echo "$STATE" | jq -r '.state.result_state')
+                    while true; do
+                      STATE=$(databricks runs get --run-id "$RUN_ID")
+                      LIFE_CYCLE_STATE=$(echo "$STATE" | jq -r '.state.life_cycle_state')
+                      RESULT_STATE=$(echo "$STATE" | jq -r '.state.result_state')
 
-                          echo "Current state: $LIFE_CYCLE_STATE"
+                      echo "Current state: $LIFE_CYCLE_STATE"
 
-                          if [ "$LIFE_CYCLE_STATE" = "TERMINATED" ] || [ "$LIFE_CYCLE_STATE" = "SKIPPED" ] || [ "$LIFE_CYCLE_STATE" = "INTERNAL_ERROR" ]; then
-                            echo "Job finished with result: $RESULT_STATE"
-                            break
-                          fi
+                      if [ "$LIFE_CYCLE_STATE" = "TERMINATED" ] || [ "$LIFE_CYCLE_STATE" = "SKIPPED" ] || [ "$LIFE_CYCLE_STATE" = "INTERNAL_ERROR" ]; then
+                        echo "Job finished with result: $RESULT_STATE"
+                        break
+                      fi
 
-                          sleep 10
-                        done
-                    '''
-                }
+                      sleep 10
+                    done
+                '''
             }
         }
 
         stage('Fetch Job Output') {
             steps {
-                withCredentials([string(credentialsId: 'databricks-token', variable: 'DATABRICKS_TOKEN')]) {
-                    sh '''
-                        export DATABRICKS_HOST=$DATABRICKS_HOST
-                        export DATABRICKS_TOKEN=$DATABRICKS_TOKEN
-                        echo "Fetching job output for run_id: $RUN_ID"
-                        databricks runs get-output --run-id "$RUN_ID"
-                    '''
-                }
+                sh '''
+                    echo "Fetching job output for run_id: $RUN_ID"
+                    databricks runs get-output --run-id "$RUN_ID"
+                '''
             }
         }
     }
