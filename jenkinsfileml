@@ -14,7 +14,7 @@ pipeline {
         stage('Train and Register Model') {
             steps {
                 sh """
-                python 20250626_xgboost_1_training_new.py \
+                python3 20250626_xgboost_1_training_new.py \
                   --data_path $DATA_PATH \
                   --model_name $MODEL_NAME \
                   --catalog $CATALOG \
@@ -26,7 +26,7 @@ pipeline {
         stage('Assign Alias') {
             steps {
                 sh """
-                python 20250626_xgboost_2a_assign_alias.py \
+                python3 20250626_xgboost_2a_assign_alias.py \
                   --model_name $MODEL_NAME \
                   --catalog $CATALOG \
                   --schema $SCHEMA \
@@ -38,7 +38,7 @@ pipeline {
         stage('Update Serving Endpoint') {
             steps {
                 sh """
-                python 20250626_xgboost_4_serve_model_endpoint_update.py \
+                python3 20250626_xgboost_4_serve_model_endpoint_update.py \
                   --model_name $MODEL_NAME \
                   --alias staging \
                   --endpoint_name telecom-fraud-staging \
@@ -51,7 +51,7 @@ pipeline {
         stage('Smoke Test Inference') {
             steps {
                 sh """
-                python 20250626_xgboost_6_api_call.py \
+                python3 20250626_xgboost_6_api_call.py \
                   --endpoint_name telecom-fraud-staging \
                   --host $DATABRICKS_HOST \
                   --token $DATABRICKS_TOKEN
