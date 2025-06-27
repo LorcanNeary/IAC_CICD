@@ -1,0 +1,37 @@
+pipeline {
+    agent any
+
+    environment {
+        DATABRICKS_TOKEN = credentials('databricks-pat')
+        DATABRICKS_HOST = 'https://adb-xxx.azuredatabricks.net'
+        CATALOG = 'ws_lg_bics'
+        SCHEMA = 'default'
+        MODEL_NAME = 'telecom_fraud_model'
+    }
+
+    stages {
+        stage('Train and Register Model') {
+            steps {
+                sh 'python 20250626_xgboost_1_training.py'
+            }
+        }
+
+        stage('Assign Alias') {
+            steps {
+                sh 'python 20250626_xgboost_2a_assign_alias.py'
+            }
+        }
+
+        stage('Update Serving Endpoint') {
+            steps {
+                sh 'python 20250626_xgboost_4_serve_model_endpoint_update.py'
+            }
+        }
+
+        stage('Smoke Test Inference') {
+            steps {
+                sh 'python 20250626_xgboost_6_api_call.py'
+            }
+        }
+    }
+}
