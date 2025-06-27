@@ -2,8 +2,8 @@ pipeline {
     agent any
 
     environment {
-        DATABRICKS_TOKEN = credentials('databricks-pat')
-        DATABRICKS_HOST  = 'https://adb-xxx.azuredatabricks.net'
+        DATABRICKS_TOKEN = credentials('databricks-token')
+        DATABRICKS_HOST  = 'https://adb-1623711253723407.7.azuredatabricks.net'
         CATALOG          = 'ws_lg_bics'
         SCHEMA           = 'default'
         MODEL_NAME       = 'telecom_fraud_model'
