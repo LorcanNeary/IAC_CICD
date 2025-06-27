@@ -3,34 +3,59 @@ pipeline {
 
     environment {
         DATABRICKS_TOKEN = credentials('databricks-pat')
-        DATABRICKS_HOST = 'https://adb-xxx.azuredatabricks.net'
-        CATALOG = 'ws_lg_bics'
-        SCHEMA = 'default'
-        MODEL_NAME = 'telecom_fraud_model'
+        DATABRICKS_HOST  = 'https://adb-xxx.azuredatabricks.net'
+        CATALOG          = 'ws_lg_bics'
+        SCHEMA           = 'default'
+        MODEL_NAME       = 'telecom_fraud_model'
+        DATA_PATH        = '/Volumes/ws_lg_bics/default/vol_1/telecom_node_data.csv'
     }
 
     stages {
         stage('Train and Register Model') {
             steps {
-                sh 'python 20250626_xgboost_1_training.py'
+                sh """
+                python 20250626_xgboost_1_training_new.py \
+                  --data_path $DATA_PATH \
+                  --model_name $MODEL_NAME \
+                  --catalog $CATALOG \
+                  --schema $SCHEMA
+                """
             }
         }
 
         stage('Assign Alias') {
             steps {
-                sh 'python 20250626_xgboost_2a_assign_alias.py'
+                sh """
+                python 20250626_xgboost_2a_assign_alias.py \
+                  --model_name $MODEL_NAME \
+                  --catalog $CATALOG \
+                  --schema $SCHEMA \
+                  --alias staging
+                """
             }
         }
 
         stage('Update Serving Endpoint') {
             steps {
-                sh 'python 20250626_xgboost_4_serve_model_endpoint_update.py'
+                sh """
+                python 20250626_xgboost_4_serve_model_endpoint_update.py \
+                  --model_name $MODEL_NAME \
+                  --alias staging \
+                  --endpoint_name telecom-fraud-staging \
+                  --host $DATABRICKS_HOST \
+                  --token $DATABRICKS_TOKEN
+                """
             }
         }
 
         stage('Smoke Test Inference') {
             steps {
-                sh 'python 20250626_xgboost_6_api_call.py'
+                sh """
+                python 20250626_xgboost_6_api_call.py \
+                  --endpoint_name telecom-fraud-staging \
+                  --host $DATABRICKS_HOST \
+                  --token $DATABRICKS_TOKEN
+                """
             }
         }
     }
