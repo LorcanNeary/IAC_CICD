@@ -2,65 +2,94 @@ pipeline {
     agent any
 
     environment {
+        VENV_PATH = "/var/jenkins_home/databricks-venv"
+        DATABRICKS_HOST = "https://adb-1623711253723407.7.azuredatabricks.net"
         DATABRICKS_TOKEN = credentials('databricks-token')
-        DATABRICKS_HOST  = 'https://adb-1623711253723407.7.azuredatabricks.net'
-        CATALOG          = 'ws_lg_bics'
-        SCHEMA           = 'default'
-        MODEL_NAME       = 'telecom_fraud_model'
-        DATA_PATH        = '/Volumes/ws_lg_bics/default/vol_1/telecom_node_data.csv'
     }
 
     stages {
-        stage('Train and Register Model') {
+        stage('Checkout Repo') {
             steps {
-                sh """
-                    echo "Installing Python dependencies"
-                    pip3 install --upgrade pip
-                    pip3 install -r requirements.txt
-
-                    echo "Running training script"
-                    python3 20250626_xgboost_1_training_new.py \
-                        --data_path $DATA_PATH \
-                        --model_name $MODEL_NAME \
-                        --catalog $CATALOG \
-                        --schema $SCHEMA
-                """
+                git branch: 'main',
+                    url: 'https://github.com/LorcanNeary/IAC_CICD'
             }
         }
 
-        stage('Assign Alias') {
+        stage('Upload Script to DBFS') {
             steps {
-                sh """
-                python3 20250626_xgboost_2a_assign_alias.py \
-                  --model_name $MODEL_NAME \
-                  --catalog $CATALOG \
-                  --schema $SCHEMA \
-                  --alias staging
-                """
+                sh '''
+                    echo "Verifying repo contents:"
+                    ls -l
+
+                    echo "Uploading 20250626_xgboost_1_training_new.py to DBFS..."
+                    databricks fs cp ./20250626_xgboost_1_training_new.py dbfs:/tmp/20250626_xgboost_1_training_new.py --overwrite
+                '''
             }
         }
 
-        stage('Update Serving Endpoint') {
+        stage('Submit Databricks Job') {
             steps {
-                sh """
-                python3 20250626_xgboost_4_serve_model_endpoint_update.py \
-                  --model_name $MODEL_NAME \
-                  --alias staging \
-                  --endpoint_name telecom-fraud-staging \
-                  --host $DATABRICKS_HOST \
-                  --token $DATABRICKS_TOKEN
-                """
+                script {
+                    def runJson = sh (
+                        script: '''
+                            databricks runs submit --json '{
+                              "run_name": "Train XGBoost Model",
+                              "existing_cluster_id": "0622-200801-1agiap0e",
+                              "libraries": [
+                                {"pypi": {"package": "mlflow"}},
+                                {"pypi": {"package": "pandas"}},
+                                {"pypi": {"package": "xgboost"}},
+                                {"pypi": {"package": "scikit-learn"}}
+                              ],
+                              "spark_python_task": {
+                                "python_file": "dbfs:/tmp/20250626_xgboost_1_training_new.py",
+                                "parameters": [
+                                  "--data_path", "/Volumes/ws_lg_bics/default/vol_1/telecom_node_data.csv",
+                                  "--model_name", "telecom_fraud_model",
+                                  "--catalog", "ws_lg_bics",
+                                  "--schema", "default"
+                                ]
+                              }
+                            }'
+                        ''',
+                        returnStdout: true
+                    ).trim()
+
+                    env.RUN_ID = sh(script: "echo '${runJson}' | jq -r '.run_id'", returnStdout: true).trim()
+                    echo "Submitted Databricks job with run_id: ${env.RUN_ID}"
+                }
             }
         }
 
-        stage('Smoke Test Inference') {
+        stage('Wait for Job Completion') {
             steps {
-                sh """
-                python3 20250626_xgboost_6_api_call.py \
-                  --endpoint_name telecom-fraud-staging \
-                  --host $DATABRICKS_HOST \
-                  --token $DATABRICKS_TOKEN
-                """
+                sh '''
+                    echo "Polling job status for run_id: $RUN_ID"
+
+                    while true; do
+                      STATE=$(databricks runs get --run-id "$RUN_ID")
+                      LIFE_CYCLE_STATE=$(echo "$STATE" | jq -r '.state.life_cycle_state')
+                      RESULT_STATE=$(echo "$STATE" | jq -r '.state.result_state')
+
+                      echo "Current state: $LIFE_CYCLE_STATE"
+
+                      if [ "$LIFE_CYCLE_STATE" = "TERMINATED" ] || [ "$LIFE_CYCLE_STATE" = "SKIPPED" ] || [ "$LIFE_CYCLE_STATE" = "INTERNAL_ERROR" ]; then
+                        echo "Job finished with result: $RESULT_STATE"
+                        break
+                      fi
+
+                      sleep 10
+                    done
+                '''
+            }
+        }
+
+        stage('Fetch Job Output') {
+            steps {
+                sh '''
+                    echo "Fetching job output for run_id: $RUN_ID"
+                    databricks runs get-output --run-id "$RUN_ID"
+                '''
             }
         }
     }
